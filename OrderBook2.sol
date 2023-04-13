@@ -317,4 +317,139 @@ contract OrderBook2 is ReentrancyGuard, IOrderBook2 {
         );
     }
     
+     function updateTrailingStopOrder(
+        uint256 _orderIndex,
+        uint256 _collateralDelta,
+        uint256 _sizeDelta,
+        uint256 _triggerPrice,
+        bool _triggerAboveThreshold,
+        uint256 _trailingBPS
+    ) external nonReentrant {
+        TrailingStopOrder storage order = trailingStopOrders[msg.sender][
+            _orderIndex
+        ];
+        require(order.account != address(0), "OrderBook: non-existent order");
+
+        order.triggerPrice = _triggerPrice;
+        order.triggerAboveThreshold = _triggerAboveThreshold;
+        order.sizeDelta = _sizeDelta;
+        order.collateralDelta = _collateralDelta;
+        order.trailingBPS = _trailingBPS;
+
+        emit UpdateTrailingStopOrder(
+            msg.sender,
+            _orderIndex,
+            order.collateralToken,
+            _collateralDelta,
+            order.indexToken,
+            _sizeDelta,
+            order.isLong,
+            _triggerPrice,
+            _triggerAboveThreshold,
+            _trailingBPS
+        );
+    }
+
+    function cancelTrailingStopOrder(uint256 _orderIndex) public nonReentrant {
+        TrailingStopOrder memory order = trailingStopOrders[msg.sender][
+            _orderIndex
+        ];
+        require(order.account != address(0), "OrderBook: non-existent order");
+
+        delete trailingStopOrders[msg.sender][_orderIndex];
+        _transferOutETH(order.executionFee, msg.sender);
+
+        emit CancelTrailingStopOrder(
+            order.account,
+            _orderIndex,
+            order.collateralToken,
+            order.collateralDelta,
+            order.indexToken,
+            order.sizeDelta,
+            order.isLong,
+            order.triggerPrice,
+            order.triggerAboveThreshold,
+            order.executionFee,
+            order.trailingBPS
+        );
+    }
+
+    function executeTrailingStopOrder(
+        address _address,
+        uint256 _orderIndex,
+        address payable _feeReceiver
+    ) external  override nonReentrant onlyFastPriceFeed {
+        TrailingStopOrder memory order = trailingStopOrders[_address][
+            _orderIndex
+        ];
+        require(order.account != address(0), "OrderBook: non-existent order");
+
+        // decrease long should use min price
+        // decrease short should use max price
+        (uint256 currentPrice, ) = validatePositionOrderPrice(
+            order.triggerAboveThreshold,
+            order.triggerPrice,
+            order.indexToken,
+            !order.isLong,
+            true
+        );
+
+        delete trailingStopOrders[_address][_orderIndex];
+
+        uint256 amountOut = IRouter(router).pluginDecreasePosition(
+            order.account,
+            order.collateralToken,
+            order.indexToken,
+            order.collateralDelta,
+            order.sizeDelta,
+            order.isLong,
+            address(this)
+        );
+
+        // transfer released collateral to user
+        if (order.collateralToken == weth) {
+            _transferOutETH(amountOut, payable(order.account));
+        } else {
+            IERC20(order.collateralToken).safeTransfer(
+                order.account,
+                amountOut
+            );
+        }
+
+        // pay executor
+        _transferOutETH(order.executionFee, _feeReceiver);
+
+        emit ExecuteTrailingStopOrder(
+            order.account,
+            _orderIndex,
+            order.collateralToken,
+            order.collateralDelta,
+            order.indexToken,
+            order.sizeDelta,
+            order.isLong,
+            order.triggerPrice,
+            order.triggerAboveThreshold,
+            order.executionFee,
+            currentPrice,
+            order.trailingBPS
+        );
+    }
+
+    function _transferInETH() private {
+        if (msg.value != 0) {
+            IWETH(weth).deposit{value: msg.value}();
+        }
+    }
+
+    function _transferOutETH(
+        uint256 _amountOut,
+        address payable _receiver
+    ) private {
+        IWETH(weth).withdraw(_amountOut);
+        _receiver.sendValue(_amountOut);
+    }
+
+}
+
+    
     
