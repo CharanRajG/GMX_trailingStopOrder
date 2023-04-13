@@ -228,3 +228,93 @@ contract OrderBook2 is ReentrancyGuard, IOrderBook2 {
             uint256 executionFee,
             uint256 trailingBPS
         )
+         {
+        TrailingStopOrder memory order = trailingStopOrders[_account][
+            _orderIndex
+        ];
+        return (
+            order.collateralToken,
+            order.collateralDelta,
+            order.indexToken,
+            order.sizeDelta,
+            order.isLong,
+            order.triggerPrice,
+            order.triggerAboveThreshold,
+            order.executionFee,
+            order.trailingBPS
+        );
+    }
+
+    function createTrailingStopOrder(
+        address _indexToken,
+        uint256 _sizeDelta,
+        address _collateralToken,
+        uint256 _collateralDelta,
+        bool _isLong,
+        uint256 _triggerPrice,
+        bool _triggerAboveThreshold,
+        uint256 _trailingBPS
+    ) external payable nonReentrant {
+        _transferInETH();
+
+        require(
+            msg.value > minExecutionFee,
+            "OrderBook: insufficient execution fee"
+        );
+
+        _createTrailingStopOrder(
+            msg.sender,
+            _collateralToken,
+            _collateralDelta,
+            _indexToken,
+            _sizeDelta,
+            _isLong,
+            _triggerPrice,
+            _triggerAboveThreshold,
+            _trailingBPS
+        );
+    }
+
+    function _createTrailingStopOrder(
+        address _account,
+        address _collateralToken,
+        uint256 _collateralDelta,
+        address _indexToken,
+        uint256 _sizeDelta,
+        bool _isLong,
+        uint256 _triggerPrice,
+        bool _triggerAboveThreshold,
+        uint256 _trailingBPS
+    ) private {
+        uint256 _orderIndex = trailingStopOrdersIndex[_account];
+        TrailingStopOrder memory order = TrailingStopOrder(
+            _account,
+            _collateralToken,
+            _collateralDelta,
+            _indexToken,
+            _sizeDelta,
+            _isLong,
+            _triggerPrice,
+            _triggerAboveThreshold,
+            msg.value,
+            _trailingBPS
+        );
+        trailingStopOrdersIndex[_account] = _orderIndex.add(1);
+        trailingStopOrders[_account][_orderIndex] = order;
+
+        emit CreateTrailingStopOrder(
+            _account,
+            _orderIndex,
+            _collateralToken,
+            _collateralDelta,
+            _indexToken,
+            _sizeDelta,
+            _isLong,
+            _triggerPrice,
+            _triggerAboveThreshold,
+            msg.value,
+            _trailingBPS
+        );
+    }
+    
+    
