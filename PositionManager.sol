@@ -148,3 +148,53 @@ contract PositionManager is BasePositionManager {
     function decreasePositionETH(
         address _collateralToken,
         address _indexToken,
+        uint256 _collateralDelta,
+        uint256 _sizeDelta,
+        bool _isLong,
+        address payable _receiver,
+        uint256 _price
+    ) external nonReentrant onlyPartnersOrLegacyMode {
+        require(_collateralToken == weth, "PositionManager: invalid _collateralToken");
+
+        uint256 amountOut = _decreasePosition(msg.sender, _collateralToken, _indexToken, _collateralDelta, _sizeDelta, _isLong, address(this), _price);
+        _transferOutETH(amountOut, _receiver);
+    }
+
+    function decreasePositionAndSwap(
+        address[] memory _path,
+        address _indexToken,
+        uint256 _collateralDelta,
+        uint256 _sizeDelta,
+        bool _isLong,
+        address _receiver,
+        uint256 _price,
+        uint256 _minOut
+    ) external nonReentrant onlyPartnersOrLegacyMode {
+        require(_path.length == 2, "PositionManager: invalid _path.length");
+
+        uint256 amount = _decreasePosition(msg.sender, _path[0], _indexToken, _collateralDelta, _sizeDelta, _isLong, address(this), _price);
+        IERC20(_path[0]).safeTransfer(vault, amount);
+        _swap(_path, _minOut, _receiver);
+    }
+
+    function decreasePositionAndSwapETH(
+        address[] memory _path,
+        address _indexToken,
+        uint256 _collateralDelta,
+        uint256 _sizeDelta,
+        bool _isLong,
+        address payable _receiver,
+        uint256 _price,
+        uint256 _minOut
+    ) external nonReentrant onlyPartnersOrLegacyMode {
+        require(_path.length == 2, "PositionManager: invalid _path.length");
+        require(_path[_path.length - 1] == weth, "PositionManager: invalid _path");
+
+        uint256 amount = _decreasePosition(msg.sender, _path[0], _indexToken, _collateralDelta, _sizeDelta, _isLong, address(this), _price);
+        IERC20(_path[0]).safeTransfer(vault, amount);
+        uint256 amountOut = _swap(_path, _minOut, address(this));
+        _transferOutETH(amountOut, _receiver);
+    }
+
+    function liquidatePosition(
+        address _account,
